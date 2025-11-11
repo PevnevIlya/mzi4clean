@@ -1,57 +1,40 @@
-package com.example.AuthenticationService.util;
+package com.example.mzi.crypto;
+
+import java.nio.charset.StandardCharsets;
 
 public final class GOST3411_2012 {
 
-    private static final byte[][] S_BOX = {
-            {0x0C, 0x04, 0x06, 0x02, 0x0A, 0x05, 0x0B, 0x09, 0x0E, 0x08, 0x0D, 0x07, 0x00, 0x03, 0x0F, 0x01},
-            {0x06, 0x08, 0x02, 0x03, 0x09, 0x0A, 0x05, 0x0C, 0x01, 0x0E, 0x04, 0x07, 0x0B, 0x0D, 0x00, 0x0F},
-            {0x0B, 0x03, 0x05, 0x08, 0x02, 0x0F, 0x0A, 0x0D, 0x0E, 0x01, 0x07, 0x04, 0x0C, 0x09, 0x06, 0x00},
-            {0x0C, 0x08, 0x02, 0x01, 0x0D, 0x04, 0x0F, 0x06, 0x07, 0x0B, 0x0A, 0x05, 0x0E, 0x03, 0x09, 0x00},
-            {0x07, 0x0F, 0x05, 0x0A, 0x08, 0x01, 0x06, 0x0D, 0x00, 0x09, 0x03, 0x0E, 0x0B, 0x04, 0x02, 0x0C},
-            {0x05, 0x0D, 0x0F, 0x06, 0x09, 0x02, 0x0C, 0x0A, 0x0B, 0x07, 0x08, 0x01, 0x04, 0x0E, 0x03, 0x00},
-            {0x08, 0x0E, 0x02, 0x05, 0x06, 0x09, 0x01, 0x0C, 0x0F, 0x04, 0x0B, 0x00, 0x0D, 0x0A, 0x03, 0x07},
-            {0x01, 0x07, 0x0E, 0x0D, 0x00, 0x05, 0x08, 0x03, 0x04, 0x0F, 0x0A, 0x06, 0x09, 0x0C, 0x0B, 0x02}
+    private static final byte[] S = {
+            0xC,0x4,0x6,0x2,0xA,0x5,0xB,0x9,0xE,0x8,0xD,0x7,0x0,0x3,0xF,0x1,
+            0x6,0x8,0x2,0x3,0x9,0xA,0x5,0xC,0x1,0xE,0x4,0x7,0xB,0xD,0x0,0xF,
+            0xB,0x3,0x5,0x8,0x2,0xF,0xA,0xD,0xE,0x1,0x7,0x4,0xC,0x9,0x6,0x0,
+            0xC,0x8,0x2,0x1,0xD,0x4,0xF,0x6,0x7,0xB,0xA,0x5,0xE,0x3,0x9,0x0,
+            0x7,0xF,0x5,0xA,0x8,0x1,0x6,0xD,0x0,0x9,0x3,0xE,0xB,0x4,0x2,0xC,
+            0x5,0xD,0xF,0x6,0x9,0x2,0xC,0xA,0xB,0x7,0x8,0x1,0x4,0xE,0x3,0x0,
+            0x8,0xE,0x2,0x5,0x6,0x9,0x1,0xC,0xF,0x4,0xB,0x0,0xD,0xA,0x3,0x7,
+            0x1,0x7,0xE,0xD,0x0,0x5,0x8,0x3,0x4,0xF,0xA,0x6,0x9,0xC,0xB,0x2
     };
 
-    private static final long[][] A = new long[64][8];
-    static {
-        long[] vec = {0x8e,0x11,0x98,0xa2,0x3f,0x1c,0xc4,0xf5};
-        for (int i = 0; i < 64; i++) {
-            for (int j = 0; j < 8; j++) {
-                A[i][j] = vec[j];
-            }
-            vec = lps(vec);
-        }
-    }
+    private static final long[] TAU = {
+            0,8,16,24,32,40,48,56,1,9,17,25,33,41,49,57,2,10,18,26,34,42,50,58,
+            3,11,19,27,35,43,51,59,4,12,20,28,36,44,52,60,5,13,21,29,37,45,53,61,
+            6,14,22,30,38,46,54,62,7,15,23,31,39,47,55,63
+    };
 
     private static final long[][] C = {
-            {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01},
-            {0xdd,0x80,0x64,0x6b,0xa2,0x52,0x80,0x3f},
-            {0x4e,0x6c,0x74,0x8c,0x2b,0x8e,0x8a,0x2f},
-            {0x6c,0x2b,0x8e,0x8a,0x2f,0x4e,0x6c,0x74},
-            {0x8c,0x2b,0x8e,0x8a,0x2f,0x6c,0x2b,0x8e},
-            {0x2f,0x6c,0x2b,0x8e,0x8a,0x2f,0x6c,0x2b},
-            {0x8a,0x2f,0x6c,0x2b,0x8e,0x8a,0x2f,0x6c},
-            {0x2b,0x8e,0x8a,0x2f,0x6c,0x2b,0x8e,0x8a},
-            {0x8e,0x8a,0x2f,0x6c,0x2b,0x8e,0x8a,0x2f},
-            {0x6c,0x2b,0x8e,0x8a,0x2f,0x6c,0x2b,0x8e},
-            {0x8a,0x2f,0x6c,0x2b,0x8e,0x8a,0x2f,0x6c},
-            {0x2f,0x6c,0x2b,0x8e,0x8a,0x2f,0x6c,0x2b}
+            {0x00L,0x00L,0x00L,0x00L,0x00L,0x00L,0x00L,0x00L},
+            {0xb1L,0x08L,0x5bL,0xdaL,0x1eL,0xcaL,0xdaL,0xe9L},
+            {0xebL,0xcbL,0x2fL,0x81L,0xc0L,0x65L,0x7cL,0x1fL},
+            {0x2fL,0x6eL,0x14L,0x6cL,0x73L,0x17L,0x62L,0x3aL},
+            {0x4bL,0x91L,0x81L,0xffL,0x36L,0x77L,0x9fL,0x96L},
+            {0x5bL,0xa4L,0x20L,0x25L,0x3dL,0xbcL,0x2aL,0x2cL},
+            {0xb9L,0x0bL,0x60L,0x8dL,0x6bL,0x45L,0x9aL,0x8dL},
+            {0x8fL,0xe3L,0x6aL,0x53L,0x7dL,0x9cL,0x4cL,0x01L},
+            {0x6dL,0x37L,0xa6L,0x34L,0x73L,0x75L,0x81L,0x0eL},
+            {0x9cL,0x7fL,0x5cL,0x4eL,0x49L,0x4bL,0x7bL,0x9dL},
+            {0x7dL,0x1aL,0x2fL,0x8cL,0x58L,0x3fL,0x73L,0x2eL},
+            {0x2fL,0x8cL,0x58L,0x3fL,0x73L,0x2eL,0x7dL,0x1aL}
     };
-
-    private static long[] lps(long[] x) {
-        long[] res = new long[8];
-        for (int i = 0; i < 64; i++) {
-            long bit = 0;
-            for (int j = 0; j < 8; j++) {
-                if ((x[j] & (1L << (63 - i))) != 0) bit ^= 1L;
-            }
-            for (int j = 0; j < 8; j++) {
-                if ((i % 8) == j) res[j] ^= bit << (63 - i % 64);
-            }
-        }
-        return res;
-    }
 
     private static long[] xor(long[] a, long[] b) {
         long[] c = new long[8];
@@ -59,151 +42,127 @@ public final class GOST3411_2012 {
         return c;
     }
 
-    private static long[] addMod512(long[] a, long[] b) {
+    private static long[] add512(long[] a, long[] b) {
         long carry = 0;
         long[] c = new long[8];
         for (int i = 7; i >= 0; i--) {
-            long sum = a[i] + b[i] + carry;
-            c[i] = sum & 0xFFFFFFFFFFFFFFFFL;
-            carry = sum >>> 64;
+            long t = a[i] + b[i] + carry;
+            c[i] = t & 0xFFFFFFFFFFFFFFFFL;
+            carry = t >>> 64;
         }
         return c;
     }
 
-    private static long[] s(long[] x) {
-        long[] res = new long[8];
-        for (int i = 0; i < 8; i++) {
-            long word = x[i];
-            for (int j = 0; j < 8; j++) {
-                int nibble = (int) ((word >>> (56 - j*8)) & 0xFF);
-                int row = nibble >>> 4;
-                int col = nibble & 0x0F;
-                int substituted = S_BOX[j][col] << 4 | S_BOX[j][row];
-                res[i] = (res[i] << 8) | substituted;
-            }
-        }
-        return res;
-    }
-
-    private static long[] p(long[] x) {
-        long[] res = new long[8];
+    private static long[] S(long[] x) {
+        long[] r = new long[8];
         for (int i = 0; i < 64; i++) {
-            int src = i % 8;
-            int dst = (i * 8) % 64;
-            long bit = (x[src] >>> (63 - (i % 8) * 8)) & 1;
-            res[dst / 8] |= bit << (63 - (dst % 8) * 8);
+            int idx = (int)((x[i>>3] >>> ((7-(i&7))<<3)) & 0xFF);
+            long v = S[idx];
+            r[i>>3] |= v << ((7-(i&7))<<3);
         }
-        return res;
+        return r;
     }
 
-    private static long[] l(long[] x) {
-        long[] res = new long[8];
+    private static long[] P(long[] x) {
+        long[] r = new long[8];
         for (int i = 0; i < 64; i++) {
-            long bit = 0;
-            for (int j = 0; j < 8; j++) {
-                if ((x[j] & (1L << (63 - i))) != 0) bit ^= A[i][j];
-            }
-            int wordIdx = i / 8;
-            int bitInWord = 56 - (i % 8) * 8;
-            res[wordIdx] |= bit << bitInWord;
+            long b = (x[i>>3] >>> ((7-(i&7))<<3)) & 1;
+            r[TAU[i]>>3] |= b << ((7-(TAU[i]&7))<<3);
         }
-        return res;
+        return r;
     }
 
-    private static long[] E(long[] K, long[] m) {
-        long[] state = xor(K, m);
+    private static long[] L(long[] x) {
+        long[] r = new long[8];
+        for (int i = 0; i < 64; i++) {
+            long t = 0;
+            for (int j = 0; j < 64; j++) {
+                if (((x[j>>3] >>> ((7-(j&7))<<3)) & 1) == 1) {
+                    t ^= (0x8e2010b8L >>> (j&7)) & 1L;
+                }
+            }
+            if (t == 1) r[i>>3] ^= 1L << ((7-(i&7))<<3);
+        }
+        return r;
+    }
+
+    private static long[] E(long[] k, long[] m) {
+        long[] state = xor(k, m);
+        long[] key = k.clone();
         for (int i = 0; i < 12; i++) {
-            state = s(state);
-            state = p(state);
-            state = l(state);
-            K = xor(K, C[i]);
-            K = s(K);
-            K = p(K);
-            K = l(K);
-            state = xor(state, K);
+            state = S(state);
+            state = P(state);
+            state = L(state);
+            key = xor(key, C[i]);
+            key = S(key);
+            key = P(key);
+            key = L(key);
+            state = xor(state, key);
         }
         return state;
     }
 
-    private static long[] g(long[] N, long[] m, long[] h) {
-        long[] K = xor(h, N);
-        K = s(K); K = p(K); K = l(K);
-        long[] t = E(K, m);
-        t = xor(t, h);
-        return xor(t, m);
+    private static long[] g(long[] n, long[] m, long[] h) {
+        long[] k = S(P(L(xor(h, n))));
+        long[] t = E(k, m);
+        return xor(xor(t, h), m);
+    }
+
+    private static long[] bytesToBlock(byte[] b, int off) {
+        long[] r = new long[8];
+        for (int i = 0; i < 64; i++) {
+            int pos = off + (i^7);
+            r[i>>3] = (r[i>>3] << 8) | (b[pos] & 0xFF);
+        }
+        return r;
     }
 
     public static String hash512(byte[] data) {
-        return bytesToHex(compute(data, 512));
+        return bytesToHex(compute(data, 64));
     }
 
     public static String hash256(byte[] data) {
-        byte[] full = compute(data, 512);
-        byte[] truncated = new byte[32];
-        System.arraycopy(full, 0, truncated, 0, 32);
-        return bytesToHex(truncated);
+        return bytesToHex(compute(data, 32));
     }
 
-    private static byte[] compute(byte[] msg, int hashSize) {
+    private static byte[] compute(byte[] msg, int outLen) {
         long[] h = new long[8];
-        long[] N = new long[8];
-        long[] Sigma = new long[8];
+        long[] n = new long[8];
+        long[] sigma = new long[8];
 
-        int len = msg.length * 8;
         int pos = 0;
-
         while (pos + 64 <= msg.length) {
-            byte[] block = new byte[64];
-            System.arraycopy(msg, pos, block, 0, 64);
-            long[] m = bytesToLongsBE(reverse(block));
-            h = g(N, m, h);
-            N = addMod512(N, new long[]{0,0,0,0,0,0,0,512});
-            Sigma = addMod512(Sigma, m);
+            long[] m = bytesToBlock(msg, pos);
+            h = g(n, m, h);
+            n = add512(n, new long[]{0,0,0,0,0,0,0,512});
+            sigma = add512(sigma, m);
             pos += 64;
         }
 
-        // padding
-        int remaining = msg.length - pos;
         byte[] last = new byte[64];
-        System.arraycopy(msg, pos, last, 0, remaining);
-        last[remaining] = 0x01;
+        int rem = msg.length - pos;
+        System.arraycopy(msg, pos, last, 0, rem);
+        last[rem] = 0x01;
 
-        long[] m = bytesToLongsBE(reverse(last));
-        h = g(N, m, h);
-        N = addMod512(N, new long[]{0,0,0,0,0,0,0,len});
-        Sigma = addMod512(Sigma, m);
+        long[] m = bytesToBlock(last, 0);
+        h = g(n, m, h);
+        long lenBits = (long)msg.length * 8;
+        n = add512(n, new long[]{0,0,0,0,0,0,0,lenBits});
+        sigma = add512(sigma, m);
 
         h = g(new long[8], new long[8], h);
-        h = g(new long[8], Sigma, h);
+        h = g(new long[8], sigma, h);
 
-        byte[] result = new byte[64];
-        for (int i = 0; i < 8; i++) {
-            for (int j = 0; j < 8; j++) {
-                result[i*8 + j] = (byte) (h[i] >>> (56 - j*8));
-            }
+        byte[] result = new byte[outLen];
+        for (int i = 0; i < outLen; i++) {
+            result[i] = (byte)(h[i>>>3] >>> ((7-(i&7))<<3));
         }
         return result;
     }
 
-    private static long[] bytesToLongsBE(byte[] b) {
-        long[] res = new long[8];
-        for (int i = 0; i < 8; i++) {
-            for (int j = 0; j < 8; j++) {
-                res[i] = (res[i] << 8) | (b[i*8 + j] & 0xFF);
-            }
-        }
-        return res;
-    }
-
-    private static byte[] reverse(byte[] b) {
-        byte[] r = new byte[b.length];
-        for (int i = 0; i < b.length; i++) r[i] = b[b.length - 1 - i];
-        return r;
-    }
-
-    private static String bytesToHex(byte[] bytes) {
+    private static String bytesToHex(byte[] b) {
         StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) sb.append(String.format("%02x", b));
+        for (byte v : b) sb.append(String.format("%02x", v));
         return sb.toString();
     }
 }
