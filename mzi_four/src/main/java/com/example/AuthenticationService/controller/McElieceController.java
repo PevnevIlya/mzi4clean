@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
+
 @RestController
 @RequestMapping("/api")
 public class McElieceController {
@@ -28,18 +30,19 @@ public class McElieceController {
     @PostMapping("/encrypt")
     public ResponseEntity<EncryptResponse> encrypt(@RequestBody EncryptRequest request,
                                                    @RequestHeader(value = "Authorization", required = false) String auth) {
-        String cipher = mService.encryptText(request.getText());
-        int bytes = mService.estimateCipherBytesForText(request.getText());
-        stats.addEncryptBytes(bytes);
+        String originalText = request.getText();
+        int plainBytes = originalText.getBytes(StandardCharsets.UTF_8).length;
+        String cipher = mService.encryptText(originalText);
+        stats.addEncryptBytes(plainBytes);
         return ResponseEntity.ok(new EncryptResponse(cipher));
     }
 
     @PostMapping("/decrypt")
     public ResponseEntity<DecryptResponse> decrypt(@RequestBody DecryptRequest request,
                                                    @RequestHeader(value = "Authorization", required = false) String auth) {
-        String text = mService.decryptCipher(request.getCipher());
-        int plainBytes = mService.estimatePlainBytesFromCipherBase64(request.getCipher());
+        String decryptedText = mService.decryptCipher(request.getCipher());
+        int plainBytes = decryptedText.getBytes(StandardCharsets.UTF_8).length;
         stats.addDecryptBytes(plainBytes);
-        return ResponseEntity.ok(new DecryptResponse(text));
+        return ResponseEntity.ok(new DecryptResponse(decryptedText));
     }
 }

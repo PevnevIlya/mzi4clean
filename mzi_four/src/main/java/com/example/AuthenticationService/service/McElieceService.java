@@ -85,26 +85,6 @@ public class McElieceService {
         return new String(original, StandardCharsets.UTF_8);
     }
 
-    public int estimateCipherBytesForText(String text) {
-        byte[] utf = text.getBytes(StandardCharsets.UTF_8);
-        String b64 = Base64.getEncoder().encodeToString(utf);
-        byte[] b64bytes = b64.getBytes(StandardCharsets.UTF_8);
-        int payloadBits = ((4 + b64bytes.length) * 8);
-        int blocks = (payloadBits + k - 1) / k;
-        int bitLen = blocks * n;
-        return (bitLen + 7) / 8;
-    }
-
-    public int estimatePlainBytesFromCipherBase64(String base64cipher) {
-        byte[] raw = Base64.getDecoder().decode(base64cipher);
-        boolean[] bits = bytesToBits(raw);
-        int mBlocks = bits.length / n;
-        int plainBits = mBlocks * k;
-        int plainBytes = (plainBits + 7) / 8;
-        if (plainBytes < 4) return 0;
-        return Math.max(0, plainBytes - 4);
-    }
-
     private boolean[] encodeBlock(boolean[] m) {
         boolean[] c = new boolean[n];
         for (int j = 0; j < n; j++) {
