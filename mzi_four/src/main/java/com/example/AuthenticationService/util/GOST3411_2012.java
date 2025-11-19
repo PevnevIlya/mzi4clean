@@ -23,6 +23,11 @@ public class GOST3411_2012 {
             0x70a6a56e2440598eL,0x3853dc371220a247L,0x1ca76e95091051a5L,0x0edd37c48a08a6d8L,
             0x07e095624504536cL,0x8d70c431ac02a736L,0xc83862965601dd1bL,0x641c314b2b8ee083L
     };
+
+    public GOST3411_2012() {
+        Arrays.fill(IV256, (byte) 0x01);
+    }
+    
     private static final byte[] C = new byte[12*64];
     static {
         for (int i = 0; i < 12; i++) {
@@ -101,13 +106,19 @@ public class GOST3411_2012 {
         while(len>64){
             byte[] m=Arrays.copyOfRange(M,len-64,len);
             h=g(N,m,h);
-            long bits=512;for(int i=0;i<64;i++){int carry=(N[i]&0xFF)+(int)(bits&0xFF)+((i>0)?0:0);N[i]=(byte)(carry&0xFF);}
+            long bits=512;for(int i=0;i<64;i++){
+                int carry=(N[i]&0xFF)+(int)(bits&0xFF)+((i>0)?0:0);N[i]=(byte)(carry&0xFF);
+            }
             for(int i=0;i<64;i++){int carry=(S[i]&0xFF)+(m[i]&0xFF);S[i]=(byte)(carry&0xFF);}
             len-=64;
         }
         byte[] m=pad(Arrays.copyOfRange(M,0,len));
         h=g(N,m,h);
-        long bits=len*8;for(int i=0;i<64;i++){int carry=(N[i]&0xFF)+(int)(bits&0xFF)+((i>0)?0:0);N[i]=(byte)(carry&0xFF);}
+        long bits=len*8;for(int i=0;i<64;i++)
+        {
+            int carry=(N[i]&0xFF)+(int)(bits&0xFF)+((i>0)?0:0);
+            N[i]=(byte)(carry&0xFF);
+        }
         for(int i=0;i<64;i++){int carry=(S[i]&0xFF)+(m[i]&0xFF);S[i]=(byte)(carry&0xFF);}
         h=g(new byte[64],h,N);
         h=g(new byte[64],h,S);
@@ -116,7 +127,49 @@ public class GOST3411_2012 {
         return sb.toString();
     }
     public static String hash256(byte[] M){
-        String h=hash512(M);
-        return h.substring(0,64);
+        byte[] h = IV256.clone();
+        byte[] N = new byte[64];
+        byte[] S = new byte[64];
+        int len = M.length;
+
+        while(len > 64){
+            byte[] m = Arrays.copyOfRange(M, len - 64, len);
+            h = g(N, m, h);
+
+            long bits = 512;
+            for (int i = 0; i < 64; i++) {
+                int carry = (N[i] & 0xFF) + (int)(bits & 0xFF);
+                N[i] = (byte)(carry & 0xFF);
+            }
+            for (int i = 0; i < 64; i++) {
+                int carry = (S[i] & 0xFF) + (m[i] & 0xFF);
+                S[i] = (byte)(carry & 0xFF);
+            }
+
+            len -= 64;
+        }
+
+        byte[] m = pad(Arrays.copyOfRange(M, 0, len));
+        h = g(N, m, h);
+
+        long bits = len * 8;
+        for (int i = 0; i < 64; i++) {
+            int carry = (N[i] & 0xFF) + (int)(bits & 0xFF);
+            N[i] = (byte)(carry & 0xFF);
+        }
+        for (int i = 0; i < 64; i++) {
+            int carry = (S[i] & 0xFF) + (m[i] & 0xFF);
+            S[i] = (byte)(carry & 0xFF);
+        }
+
+        h = g(new byte[64], h, N);
+        h = g(new byte[64], h, S);
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 32; i++) {
+            sb.append(String.format("%02x", h[i]));
+        }
+        return sb.toString();
     }
+
 }
