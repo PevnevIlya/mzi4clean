@@ -27,7 +27,7 @@ public class GOST3411_2012 {
     public GOST3411_2012() {
         Arrays.fill(IV256, (byte) 0x01);
     }
-    
+
     private static final byte[] C = new byte[12*64];
     static {
         for (int i = 0; i < 12; i++) {
