@@ -8,8 +8,12 @@ import java.security.Security;
 
 @SpringBootApplication
 public class AuthenticationServiceApplication {
-	public static void main(String[] args) {
+
+	static {
 		Security.addProvider(new BouncyCastleProvider());
+	}
+
+	public static void main(String[] args) {
 		SpringApplication.run(AuthenticationServiceApplication.class, args);
 	}
 }
