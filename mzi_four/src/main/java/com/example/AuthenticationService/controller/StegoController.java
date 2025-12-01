@@ -10,27 +10,25 @@ import org.springframework.web.multipart.MultipartFile;
 @CrossOrigin
 public class StegoController {
 
-    private final StegoService stegoService;
+    private final StegoService service;
 
-    public StegoController(StegoService stegoService) {
-        this.stegoService = stegoService;
+    public StegoController(StegoService service) {
+        this.service = service;
     }
 
-    @PostMapping(value = "/hide", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<byte[]> hide(
-            @RequestParam("image") MultipartFile image,
-            @RequestParam("message") String message) throws Exception {
-
-        byte[] result = stegoService.hideMessage(image, message);
+    @PostMapping("/hide")
+    public ResponseEntity<byte[]> hide(@RequestParam("image") MultipartFile image,
+                                       @RequestParam("message") String message) throws Exception {
+        byte[] result = service.hide(image, message);
         HttpHeaders h = new HttpHeaders();
         h.setContentType(MediaType.IMAGE_JPEG);
         h.setContentDisposition(ContentDisposition.attachment().filename("stego.jpg").build());
         return new ResponseEntity<>(result, h, HttpStatus.OK);
     }
 
-    @PostMapping(value = "/extract", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping("/extract")
     public ResponseEntity<String> extract(@RequestParam("image") MultipartFile image) throws Exception {
-        String text = stegoService.extractMessage(image);
-        return ResponseEntity.ok(text.isEmpty() ? "No hidden message" : text);
+        String text = service.extract(image);
+        return ResponseEntity.ok(text.isEmpty() ? "No message" : text);
     }
 }

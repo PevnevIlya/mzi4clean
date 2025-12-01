@@ -10,43 +10,55 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class StegoService {
 
-    private static final int[] COEFFS = {1, 2, 5};
+    private static final int[] POS = {5, 6, 14, 15, 21, 22};
 
-    public byte[] hideMessage(MultipartFile file, String message) throws Exception {
+    public byte[] hide(MultipartFile file, String message) throws Exception {
         BufferedImage img = ImageIO.read(file.getInputStream());
         if (img == null) throw new IllegalArgumentException("Invalid image");
+        if (img.getWidth() % 8 != 0 || img.getHeight() % 8 != 0)
+            throw new IllegalArgumentException("Image dimensions must be multiple of 8");
 
-        byte[] data = (message + "\0").getBytes(StandardCharsets.UTF_8);
-        float[][][] dct = forwardDCT(img);
-        embedData(dct, data);
+        byte[] bytes = (message + "\0").getBytes(StandardCharsets.UTF_8);
+        int[][][] dct = dctTransform(img);
+
+        int bitIndex = 0;
+        outer:
+        for (int[][] blockRow : dct) {
+            for (int[] block : blockRow) {
+                for (int pos : POS) {
+                    if (bitIndex >= bytes.length * 8) break outer;
+                    int bit = (bytes[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1;
+                    block[pos] = (block[pos] & ~1) | bit;
+                    bitIndex++;
+                }
+            }
+        }
+
         BufferedImage out = inverseDCT(dct, img.getWidth(), img.getHeight());
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(out, "jpg", baos);
         return baos.toByteArray();
     }
 
-    public String extractMessage(MultipartFile file) throws Exception {
+    public String extract(MultipartFile file) throws Exception {
         BufferedImage img = ImageIO.read(file.getInputStream());
         if (img == null) throw new IllegalArgumentException("Invalid image");
 
-        float[][][] dct = forwardDCT(img);
+        int[][][] dct = dctTransform(img);
         StringBuilder sb = new StringBuilder();
-        byte current = 0;
+        byte b = 0;
         int count = 0;
 
-        for (float[][] row : dct) {
-            for (float[] block : row) {
-                for (int i : COEFFS) {
-                    if (i >= block.length) continue;
-                    float c = block[i];
-                    int bit = ((int)c & 1);
-                    if (c < 0) bit = 1 - bit;
-                    current = (byte)((current << 1) | bit);
+        for (int[][] blockRow : dct) {
+            for (int[] block : blockRow) {
+                for (int pos : POS) {
+                    int bit = block[pos] & 1;
+                    b = (byte)((b << 1) | bit);
                     count++;
                     if (count == 8) {
-                        if (current == 0) return sb.toString();
-                        sb.append((char)(current & 0xFF));
-                        current = 0;
+                        if (b == 0) return sb.toString();
+                        sb.append((char)(b & 0xFF));
+                        b = 0;
                         count = 0;
                     }
                 }
@@ -55,78 +67,72 @@ public class StegoService {
         return sb.toString();
     }
 
-    private float[][][] forwardDCT(BufferedImage img) {
-        int w = img.getWidth();
-        int h = img.getHeight();
-        int bw = w / 8;
-        int bh = h / 8;
-        float[][][] blocks = new float[bh][bw][64];
+    private int[][][] dctTransform(BufferedImage img) {
+        int w = img.getWidth() / 8;
+        int h = img.getHeight() / 8;
+        int[][][] result = new int[h][w][64];
 
-        for (int by = 0; by < bh; by++) {
-            for (int bx = 0; bx < bw; bx++) {
-                float[][] block = new float[8][8];
+        for (int by = 0; by < h; by++) {
+            for (int bx = 0; bx < w; bx++) {
+                int[] block = new int[64];
                 for (int y = 0; y < 8; y++) {
                     for (int x = 0; x < 8; x++) {
                         int rgb = img.getRGB(bx*8 + x, by*8 + y);
                         int gray = (int)(0.299*((rgb>>16)&255) + 0.587*((rgb>>8)&255) + 0.114*(rgb&255));
-                        block[y][x] = gray - 128f;
+                        block[y*8 + x] = gray - 128;
                     }
                 }
-                blocks[by][bx] = dctBlock(block);
+                result[by][bx] = fdctAndQuantize(block);
             }
         }
-        return blocks;
+        return result;
     }
 
-    private float[] dctBlock(float[][] block) {
-        float[] dct = new float[64];
-        for (int u = 0; u < 8; u++) {
-            for (int v = 0; v < 8; v++) {
-                float sum = 0f;
-                for (int x = 0; x < 8; x++) {
-                    for (int y = 0; y < 8; y++) {
-                        sum += block[y][x]
-                                * Math.cos(Math.PI * u * (2*x + 1) / 16)
-                                * Math.cos(Math.PI * v * (2*y + 1) / 16);
-                    }
-                }
-                float cu = u == 0 ? 0.70710677f : 1f;
-                float cv = v == 0 ? 0.70710677f : 1f;
-                dct[v*8 + u] = 0.25f * cu * cv * sum;
-            }
-        }
-        return dct;
-    }
-
-    private void embedData(float[][][] blocks, byte[] data) {
-        int bit = 0;
-        for (float[][] row : blocks) {
-            for (float[] block : row) {
-                if (bit >= data.length * 8) return;
-                for (int i : COEFFS) {
-                    if (bit >= data.length * 8 || i >= block.length) break;
-                    int neededBit = (data[bit/8] >> (7 - bit%8)) & 1;
-                    float c = block[i];
-                    int currentBit = ((int)c & 1);
-                    if (c < 0) currentBit = 1 - currentBit;
-                    if (currentBit != neededBit) {
-                        c = c >= 0 ? c + (neededBit == 1 ? 1 : -1) : c + (neededBit == 1 ? -1 : 1);
-                    }
-                    block[i] = c;
-                    bit++;
-                }
-            }
-        }
-    }
-
-    private BufferedImage inverseDCT(float[][][] blocks, int width, int height) {
-        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        for (int by = 0; by < blocks.length; by++) {
-            for (int bx = 0; bx < blocks[by].length; bx++) {
-                float[][] block = idctBlock(blocks[by][bx]);
+    private int[] fdctAndQuantize(int[] block) {
+        int[] coeff = new int[64];
+        for (int v = 0; v < 8; v++) {
+            for (int u = 0; u < 8; u++) {
+                double sum = 0;
                 for (int y = 0; y < 8; y++) {
                     for (int x = 0; x < 8; x++) {
-                        int p = Math.round(block[y][x] + 128f);
+                        sum += block[y*8 + x]
+                                * Math.cos(Math.PI*u*(2*x+1)/16.0)
+                                * Math.cos(Math.PI*v*(2*y+1)/16.0);
+                    }
+                }
+                double c = (u==0 ? 1/Math.sqrt(2) : 1) * (v==0 ? 1/Math.sqrt(2) : 1);
+                coeff[v*8 + u] = (int)Math.round(0.125 * c * sum);
+            }
+        }
+        return coeff;
+    }
+
+    private BufferedImage inverseDCT(int[][][] blocks, int width, int height) {
+        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        int bw = width / 8;
+        int bh = height / 8;
+
+        for (int by = 0; by < bh; by++) {
+            for (int bx = 0; bx < bw; bx++) {
+                int[] coeff = blocks[by][bx];
+                int[] pixel = new int[64];
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        double sum = 0;
+                        for (int v = 0; v < 8; v++) {
+                            for (int u = 0; u < 8; u++) {
+                                double c = (u==0 ? 1/Math.sqrt(2) : 1) * (v==0 ? 1/Math.sqrt(2) : 1);
+                                sum += c * coeff[v*8 + u]
+                                        * Math.cos(Math.PI*u*(2*x+1)/16.0)
+                                        * Math.cos(Math.PI*v*(2*y+1)/16.0);
+                            }
+                        }
+                        pixel[y*8 + x] = (int)Math.round(sum * 0.125) + 128;
+                    }
+                }
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        int p = pixel[y*8 + x];
                         p = Math.max(0, Math.min(255, p));
                         int rgb = p<<16 | p<<8 | p;
                         img.setRGB(bx*8 + x, by*8 + y, rgb);
@@ -135,25 +141,5 @@ public class StegoService {
             }
         }
         return img;
-    }
-
-    private float[][] idctBlock(float[] dct) {
-        float[][] block = new float[8][8];
-        for (int x = 0; x < 8; x++) {
-            for (int y = 0; y < 8; y++) {
-                float sum = 0f;
-                for (int u = 0; u < 8; u++) {
-                    for (int v = 0; v < 8; v++) {
-                        float cu = u == 0 ? 0.70710677f : 1f;
-                        float cv = v == 0 ? 0.70710677f : 1f;
-                        sum += cu * cv * dct[v*8 + u]
-                                * Math.cos(Math.PI * u * (2*x + 1) / 16)
-                                * Math.cos(Math.PI * v * (2*y + 1) / 16);
-                    }
-                }
-                block[y][x] = 0.25f * sum;
-            }
-        }
-        return block;
     }
 }
