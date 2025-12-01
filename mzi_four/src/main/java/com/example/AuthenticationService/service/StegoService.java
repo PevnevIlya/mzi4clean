@@ -39,13 +39,13 @@ public class StegoService {
                 for (int i : COEFFS) {
                     if (i >= block.length) continue;
                     float c = block[i];
-                    int bit = (int)(Math.abs(c) + 0.5) & 1;
+                    int bit = ((int)c & 1);
                     if (c < 0) bit = 1 - bit;
                     current = (byte)((current << 1) | bit);
                     count++;
                     if (count == 8) {
                         if (current == 0) return sb.toString();
-                        sb.append((char)current);
+                        sb.append((char)(current & 0xFF));
                         current = 0;
                         count = 0;
                     }
@@ -64,12 +64,12 @@ public class StegoService {
 
         for (int by = 0; by < bh; by++) {
             for (int bx = 0; bx < bw; bx++) {
-                double[][] block = new double[8][8];
+                float[][] block = new float[8][8];
                 for (int y = 0; y < 8; y++) {
                     for (int x = 0; x < 8; x++) {
                         int rgb = img.getRGB(bx*8 + x, by*8 + y);
                         int gray = (int)(0.299*((rgb>>16)&255) + 0.587*((rgb>>8)&255) + 0.114*(rgb&255));
-                        block[y][x] = gray - 128;
+                        block[y][x] = gray - 128f;
                     }
                 }
                 blocks[by][bx] = dctBlock(block);
@@ -78,11 +78,11 @@ public class StegoService {
         return blocks;
     }
 
-    private float[] dctBlock(double[][] block) {
+    private float[] dctBlock(float[][] block) {
         float[] dct = new float[64];
         for (int u = 0; u < 8; u++) {
             for (int v = 0; v < 8; v++) {
-                double sum = 0;
+                float sum = 0f;
                 for (int x = 0; x < 8; x++) {
                     for (int y = 0; y < 8; y++) {
                         sum += block[y][x]
@@ -92,7 +92,7 @@ public class StegoService {
                 }
                 float cu = u == 0 ? 0.70710677f : 1f;
                 float cv = v == 0 ? 0.70710677f : 1f;
-                dct[v*8 + u] = (float)(0.25 * cu * cv * sum);
+                dct[v*8 + u] = 0.25f * cu * cv * sum;
             }
         }
         return dct;
@@ -107,9 +107,10 @@ public class StegoService {
                     if (bit >= data.length * 8 || i >= block.length) break;
                     int neededBit = (data[bit/8] >> (7 - bit%8)) & 1;
                     float c = block[i];
-                    int currentBit = (int)(Math.abs(c) + 0.5) & 1;
+                    int currentBit = ((int)c & 1);
+                    if (c < 0) currentBit = 1 - currentBit;
                     if (currentBit != neededBit) {
-                        c += c >= 0 ? (neededBit == 1 ? 1 : -1) : (neededBit == 1 ? -1 : 1);
+                        c = c >= 0 ? c + (neededBit == 1 ? 1 : -1) : c + (neededBit == 1 ? -1 : 1);
                     }
                     block[i] = c;
                     bit++;
@@ -122,10 +123,10 @@ public class StegoService {
         BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         for (int by = 0; by < blocks.length; by++) {
             for (int bx = 0; bx < blocks[by].length; bx++) {
-                double[][] block = idctBlock(blocks[by][bx]);
+                float[][] block = idctBlock(blocks[by][bx]);
                 for (int y = 0; y < 8; y++) {
                     for (int x = 0; x < 8; x++) {
-                        int p = (int)Math.round(block[y][x] + 128);
+                        int p = Math.round(block[y][x] + 128f);
                         p = Math.max(0, Math.min(255, p));
                         int rgb = p<<16 | p<<8 | p;
                         img.setRGB(bx*8 + x, by*8 + y, rgb);
@@ -136,11 +137,11 @@ public class StegoService {
         return img;
     }
 
-    private double[][] idctBlock(float[] dct) {
-        double[][] block = new double[8][8];
+    private float[][] idctBlock(float[] dct) {
+        float[][] block = new float[8][8];
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 8; y++) {
-                double sum = 0;
+                float sum = 0f;
                 for (int u = 0; u < 8; u++) {
                     for (int v = 0; v < 8; v++) {
                         float cu = u == 0 ? 0.70710677f : 1f;
@@ -150,7 +151,7 @@ public class StegoService {
                                 * Math.cos(Math.PI * v * (2*y + 1) / 16);
                     }
                 }
-                block[y][x] = 0.25 * sum;
+                block[y][x] = 0.25f * sum;
             }
         }
         return block;
