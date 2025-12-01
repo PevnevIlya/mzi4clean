@@ -1,6 +1,7 @@
 package com.example.AuthenticationService.service;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import java.security.spec.ECGenParameterSpec;
 import org.springframework.stereotype.Service;
 
 import java.math.BigInteger;
@@ -14,7 +15,7 @@ public class GostSignatureService {
 
     public void generateKeyPair() throws Exception {
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("ECGOST3410-2012", "BC");
-        kpg.initialize(new org.bouncycastle.jce.spec.ECGenParameterSpec("Tc26-Gost-3410-12-256-paramSetA"));
+        kpg.initialize(new ECGenParameterSpec("Tc26-Gost-3410-12-256-paramSetA"), new SecureRandom());
         keyPair = kpg.generateKeyPair();
     }
 
