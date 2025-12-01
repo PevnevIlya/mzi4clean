@@ -17,16 +17,8 @@ public class StegoService {
         if (img == null) throw new IllegalArgumentException("Invalid image");
 
         byte[] data = (message + "\0").getBytes(StandardCharsets.UTF_8);
-        int bits = data.length * 8;
-        int needed = (bits + 2) / 3;
-
         float[][][] dct = forwardDCT(img);
-        if (countAvailableBlocks(dct) < needed) {
-            throw new IllegalArgumentException("Image too small for this message");
-        }
-
         embedData(dct, data);
-
         BufferedImage out = inverseDCT(dct, img.getWidth(), img.getHeight());
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(out, "jpg", baos);
@@ -162,22 +154,5 @@ public class StegoService {
             }
         }
         return block;
-    }
-
-    private int countAvailableBlocks(float[][][] blocks) {
-        int cnt = 0;
-        for (float[][] row : blocks) {
-            for (float[] b : row) {
-                boolean ok = true;
-                for (int i : COEFFS) {
-                    if (i >= b.length || Math.abs(b[i]) < 2) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok) cnt++;
-            }
-        }
-        return cnt;
     }
 }
