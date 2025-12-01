@@ -2,127 +2,144 @@ package com.example.AuthenticationService.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
-import java.util.BitSet;
+import java.nio.charset.StandardCharsets;
 
 @Service
 public class StegoService {
 
+    private static final int[] POS = {5, 6, 14, 15, 21, 22};
+
     public byte[] hide(MultipartFile file, String message) throws Exception {
-        byte[] jpeg = file.getBytes();
-        byte[] msg = message.getBytes("UTF-8");
+        BufferedImage img = ImageIO.read(file.getInputStream());
+        if (img == null) throw new IllegalArgumentException("Invalid image");
+        if (img.getWidth() % 8 != 0 || img.getHeight() % 8 != 0)
+            throw new IllegalArgumentException("Image dimensions must be multiple of 8");
 
-        // payload = [длина сообщения: 4 байта] + [сообщение]
-        byte[] payload = new byte[4 + msg.length];
-        payload[0] = (byte) (msg.length >> 24);
-        payload[1] = (byte) (msg.length >> 16);
-        payload[2] = (byte) (msg.length >> 8);
-        payload[3] = (byte) msg.length;
-        System.arraycopy(msg, 0, payload, 4, msg.length);
+        byte[] bytes = (message + "\0").getBytes(StandardCharsets.UTF_8);
+        int[][][] dct = dctTransform(img);
 
-        return JSteg.embed(jpeg, payload);
+        int bitIndex = 0;
+        outer:
+        for (int[][] blockRow : dct) {
+            for (int[] block : blockRow) {
+                for (int pos : POS) {
+                    if (bitIndex >= bytes.length * 8) break outer;
+                    int bit = (bytes[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1;
+                    block[pos] = (block[pos] & ~1) | bit;
+                    bitIndex++;
+                }
+            }
+        }
+
+        BufferedImage out = inverseDCT(dct, img.getWidth(), img.getHeight());
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(out, "jpg", baos);
+        return baos.toByteArray();
     }
 
     public String extract(MultipartFile file) throws Exception {
-        byte[] jpeg = file.getBytes();
-        byte[] extractedBits = JSteg.extract(jpeg);
+        BufferedImage img = ImageIO.read(file.getInputStream());
+        if (img == null) throw new IllegalArgumentException("Invalid image");
 
-        if (extractedBits.length < 32) return "No message"; // меньше 4 байт длины
+        int[][][] dct = dctTransform(img);
+        StringBuilder sb = new StringBuilder();
+        byte b = 0;
+        int count = 0;
 
-        // Читаем длину сообщения
-        int len = ((extractedBits[0] & 0xFF) << 24) |
-                ((extractedBits[1] & 0xFF) << 16) |
-                ((extractedBits[2] & 0xFF) << 8)  |
-                (extractedBits[3] & 0xFF);
-
-        if (len <= 0 || len > extractedBits.length - 4) {
-            return "No message";
+        for (int[][] blockRow : dct) {
+            for (int[] block : blockRow) {
+                for (int pos : POS) {
+                    int bit = block[pos] & 1;
+                    b = (byte)((b << 1) | bit);
+                    count++;
+                    if (count == 8) {
+                        if (b == 0) return sb.toString();
+                        sb.append((char)(b & 0xFF));
+                        b = 0;
+                        count = 0;
+                    }
+                }
+            }
         }
-
-        return new String(extractedBits, 4, len, "UTF-8");
+        return sb.toString();
     }
 
-    // ======================================================
-    // 100% рабочий JSTEG в частотной области (упрощённый, но надёжный)
-    // Работает на 99.9% обычных JPEG (включая твои с собакой)
-    // ======================================================
-    private static class JSteg {
+    private int[][][] dctTransform(BufferedImage img) {
+        int w = img.getWidth() / 8;
+        int h = img.getHeight() / 8;
+        int[][][] result = new int[h][w][64];
 
-        public static byte[] embed(byte[] jpeg, byte[] message) {
-            BitSet bits = BitSet.valueOf(message);
-            ByteArrayOutputStream out = new ByteArrayOutputStream(jpeg.length + 512);
-            int bitIndex = 0;
-            boolean inScan = false;
-
-            for (int i = 0; i < jpeg.length; i++) {
-                byte b = jpeg[i];
-                out.write(b);
-
-                // Обнаружили начало скана (SOS маркер)
-                if (!inScan && i >= 2 && jpeg[i-1] == (byte)0xFF && jpeg[i] == (byte)0xDA) {
-                    inScan = true;
-                }
-
-                // Обработка stuffing-байтов 0xFF 0x00
-                if (inScan && (b & 0xFF) == 0xFF) {
-                    if (i + 1 < jpeg.length && jpeg[i + 1] == 0) {
-                        out.write(0);
-                        i++; // пропускаем нулевой байт
-                        continue;
+        for (int by = 0; by < h; by++) {
+            for (int bx = 0; bx < w; bx++) {
+                int[] block = new int[64];
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        int rgb = img.getRGB(bx*8 + x, by*8 + y);
+                        int gray = (int)(0.299*((rgb>>16)&255) + 0.587*((rgb>>8)&255) + 0.114*(rgb&255));
+                        block[y*8 + x] = gray - 128;
                     }
                 }
+                result[by][bx] = fdctAndQuantize(block);
+            }
+        }
+        return result;
+    }
 
-                // Встраивание бита
-                if (inScan && bitIndex < bits.length()) {
-                    int value = b & 0xFF;
-                    // Пропускаем коэффициенты 0, 1, 255 (=-1), 254 (=-2)
-                    if (value != 0 && value != 1 && value != 255 && value != 254) {
-                        boolean msgBit = bits.get(bitIndex++);
-                        boolean currentLsb = (value & 1) == 1;
+    private int[] fdctAndQuantize(int[] block) {
+        int[] coeff = new int[64];
+        for (int v = 0; v < 8; v++) {
+            for (int u = 0; u < 8; u++) {
+                double sum = 0;
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        sum += block[y*8 + x]
+                                * Math.cos(Math.PI*u*(2*x+1)/16.0)
+                                * Math.cos(Math.PI*v*(2*y+1)/16.0);
+                    }
+                }
+                double c = (u==0 ? 1/Math.sqrt(2) : 1) * (v==0 ? 1/Math.sqrt(2) : 1);
+                coeff[v*8 + u] = (int)Math.round(0.125 * c * sum);
+            }
+        }
+        return coeff;
+    }
 
-                        if (msgBit != currentLsb) {
-                            // Перезаписываем последний записанный байт
-                            int newValue = msgBit ? (value | 1) : (value & ~1);
-                            byte[] array = out.toByteArray();
-                            array[array.length - 1] = (byte) newValue;
-                            out = new ByteArrayOutputStream();
-                            out.write(array, 0, array.length);
+    private BufferedImage inverseDCT(int[][][] blocks, int width, int height) {
+        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        int bw = width / 8;
+        int bh = height / 8;
+
+        for (int by = 0; by < bh; by++) {
+            for (int bx = 0; bx < bw; bx++) {
+                int[] coeff = blocks[by][bx];
+                int[] pixel = new int[64];
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        double sum = 0;
+                        for (int v = 0; v < 8; v++) {
+                            for (int u = 0; u < 8; u++) {
+                                double c = (u==0 ? 1/Math.sqrt(2) : 1) * (v==0 ? 1/Math.sqrt(2) : 1);
+                                sum += c * coeff[v*8 + u]
+                                        * Math.cos(Math.PI*u*(2*x+1)/16.0)
+                                        * Math.cos(Math.PI*v*(2*y+1)/16.0);
+                            }
                         }
+                        pixel[y*8 + x] = (int)Math.round(sum * 0.125) + 128;
+                    }
+                }
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        int p = pixel[y*8 + x];
+                        p = Math.max(0, Math.min(255, p));
+                        int rgb = p<<16 | p<<8 | p;
+                        img.setRGB(bx*8 + x, by*8 + y, rgb);
                     }
                 }
             }
-
-            return out.toByteArray();
         }
-
-        public static byte[] extract(byte[] jpeg) {
-            ByteArrayOutputStream result = new ByteArrayOutputStream();
-            boolean inScan = false;
-
-            for (int i = 0; i < jpeg.length; i++) {
-                byte b = jpeg[i];
-
-                if (!inScan && i >= 2 && jpeg[i-1] == (byte)0xFF && jpeg[i] == (byte)0xDA) {
-                    inScan = true;
-                }
-
-                if (inScan && (b & 0xFF) == 0xFF) {
-                    if (i + 1 < jpeg.length && jpeg[i + 1] == 0) {
-                        i++; // пропускаем stuffing
-                        continue;
-                    }
-                }
-
-                if (inScan) {
-                    int value = b & 0xFF;
-                    if (value != 0 && value != 1 && value != 255 && value != 254) {
-                        result.write(value & 1); // записываем только LSB
-                    }
-                }
-            }
-
-            return result.toByteArray();
-        }
+        return img;
     }
 }
