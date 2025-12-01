@@ -2,7 +2,6 @@ package com.example.AuthenticationService.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -47,7 +46,9 @@ public class StegoService {
             for (float[] block : row) {
                 for (int i : COEFFS) {
                     if (i >= block.length) continue;
-                    int bit = (int)(Math.abs(block[i]) + 0.5) & 1;
+                    float c = block[i];
+                    int bit = (int)(Math.abs(c) + 0.5) & 1;
+                    if (c < 0) bit = 1 - bit;
                     current = (byte)((current << 1) | bit);
                     count++;
                     if (count == 8) {
